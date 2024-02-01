@@ -4,7 +4,6 @@
 #include <fstream>
 #include <iostream>
 #include <regex>
-#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -303,18 +302,36 @@ bool isBoolean(std::string_view value)
 	return value == "0" || value == "1";
 }
 
+bool isNumericChromosome(std::string_view chrom)
+{
+	if (chrom.empty()) {
+		return false;
+	}
+
+	// Check for numeric chromosomes (1-22)
+	int num = 0;
+	auto [ptr, ec] = std::from_chars(chrom.data(), chrom.data() + chrom.size(), num);
+	return ec == std::errc() && num >= 1 && num <= 22;
+}
+
 bool isHumanChromosome(std::string_view chrom)
 {
-	static std::regex const chromPattern(
-		"^(chr)?("
-		"\\d{1,2}" // Chromosome numbers 1-22
-		"|X|Y|MT|M" // Chromosome X, Y, mitochondrial DNA (MT or M)
-		"|Un_[A-Za-z0-9]+" // Unplaced scaffolds, e.g., chrUn_KI270302v1
-		"|KI[0-9]+[A-Za-z0-9_]*" // Catch-all for sequences like KI270302v1, including those without 'Un_'
-		")([_\\-][A-Za-z0-9]+)*$", // Allow for additional suffixes, e.g., _random, _alt
-		std::regex_constants::ECMAScript | std::regex_constants::icase);
+	// Handle common prefixes
+	if (chrom.starts_with("chr")) {
+		chrom.remove_prefix(3); // Remove "chr" prefix
+	}
 
-	return std::regex_match(begin(chrom), end(chrom), chromPattern);
+	// Check for standard and sex chromosomes
+	if (isNumericChromosome(chrom) || chrom == "X" || chrom == "Y" || chrom == "MT" || chrom == "M") {
+		return true;
+	}
+
+	// Check for unplaced or alternative sequences like 'chrUn_' or 'KI'
+	if (chrom.starts_with("Un_") || chrom.starts_with("KI") || chrom.contains("_KI")) {
+		return true;
+	}
+
+	return false;
 }
 
 bool checkFormatAndSamples(std::vector<std::string_view> const &fields, size_t formatIndex)
