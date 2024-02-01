@@ -263,14 +263,16 @@ bool isBoolean(std::string_view value)
 
 bool isHumanChromosome(std::string_view chrom)
 {
-	// Pattern covers standard chromosomes, "chr" prefix, mitochondrial DNA,
-	// and alternative sequences like "chr1_KI270706v1_random"
 	static std::regex const chromPattern(
-		"^(chr)?(\\d{1,2}|X|Y|MT|"
-		"M)([_\\-][A-Za-z0-9]+)*$",
+		"^(chr)?("
+		"\\d{1,2}" // Chromosome numbers 1-22
+		"|X|Y|MT|M" // Chromosome X, Y, mitochondrial DNA (MT or M)
+		"|Un_[A-Za-z0-9]+" // Unplaced scaffolds, e.g., chrUn_KI270302v1
+		"|KI[0-9]+[A-Za-z0-9_]*" // Catch-all for sequences like KI270302v1, including those without 'Un_'
+		")([_\\-][A-Za-z0-9]+)*$", // Allow for additional suffixes, e.g., _random, _alt
 		std::regex_constants::ECMAScript | std::regex_constants::icase);
 
-	return std::regex_search(chrom.cbegin(), chrom.cend(), chromPattern);
+	return std::regex_match(begin(chrom), end(chrom), chromPattern);
 }
 
 bool checkFormatAndSamples(std::vector<std::string_view> const &fields, size_t formatIndex)
