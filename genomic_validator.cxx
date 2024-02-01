@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -6,6 +7,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <boost/iostreams/copy.hpp>
@@ -14,8 +16,8 @@
 
 // Function prototypes
 bool validateFormat(std::string const &fileName);
-bool validateHeaderLine(std::string const &line);
-bool checkDataLines(std::string const &line);
+bool validateHeaderLine(std::string_view line);
+bool checkDataLines(std::string_view line);
 
 int main(int argc, char *argv[])
 {
@@ -34,11 +36,11 @@ int main(int argc, char *argv[])
 	return EXIT_SUCCESS;
 }
 
-bool isValidAlt(std::string const &alt)
+bool isValidAlt(std::string_view alt)
 {
 	// Regular expression to match valid ALT alleles: bases, '*', or symbolic alleles (angle brackets not covered here)
-	std::regex altRegex("^([ACGTN*]+|<[^>]+>)(,[ACGTN*]+|,<[^>]+>)*$");
-	return std::regex_match(alt, altRegex);
+	static std::regex const altRegex("^([ACGTN*]+|<[^>]+>)(,[ACGTN*]+|,<[^>]+>)*$");
+	return std::regex_match(alt.cbegin(), alt.cend(), altRegex);
 }
 
 bool validateFormat(std::string const &fileName)
@@ -86,37 +88,37 @@ bool validateFormat(std::string const &fileName)
 	return true;
 }
 
-bool validateFileFormatLine(std::string const &line)
+bool validateFileFormatLine(std::string_view line)
 {
-	std::regex fileFormatRegex("##fileformat=VCFv(\\d+\\.\\d+)");
-	if (!std::regex_match(line, fileFormatRegex)) {
+	static std::regex const fileFormatRegex("##fileformat=VCFv(\\d+\\.\\d+)");
+	if (!std::regex_match(line.cbegin(), line.cend(), fileFormatRegex)) {
 		std::cerr << "Invalid file format version: " << line << '\n';
 		return false;
 	}
 	return true;
 }
 
-bool validateContigLine(std::string const &line)
+bool validateContigLine(std::string_view line)
 {
-	std::regex contigRegex("##contig=<ID=[^,]+(,length=\\d+)?(,.*)?>");
-	if (!std::regex_match(line, contigRegex)) {
+	static std::regex const contigRegex("##contig=<ID=[^,]+(,length=\\d+)?(,.*)?>");
+	if (!std::regex_match(line.cbegin(), line.cend(), contigRegex)) {
 		std::cerr << "Invalid contig line: " << line << '\n';
 		return false;
 	}
 	return true;
 }
 
-bool validateAltLine(std::string const &line)
+bool validateAltLine(std::string_view line)
 {
-	std::regex altRegex("##ALT=<ID=[^,]+,Description=\"[^\"]+\">");
-	if (!std::regex_match(line, altRegex)) {
+	static std::regex const altRegex("##ALT=<ID=[^,]+,Description=\"[^\"]+\">");
+	if (!std::regex_match(line.cbegin(), line.cend(), altRegex)) {
 		std::cerr << "Invalid ALT line: " << line << '\n';
 		return false;
 	}
 	return true;
 }
 
-bool validateSampleOrPedigreeLine(std::string const &line)
+bool validateSampleOrPedigreeLine(std::string_view line)
 {
 	// Basic structure check; can be more specific based on VCF version and use case
 	if (line.starts_with("##SAMPLE=") || line.starts_with("##PEDIGREE=")) {
@@ -126,29 +128,29 @@ bool validateSampleOrPedigreeLine(std::string const &line)
 	return false;
 }
 
-bool validateHeaderLine(std::string const &line)
+bool validateHeaderLine(std::string_view line)
 {
-	std::regex infoFormatRegex(
+	static std::regex const infoFormatRegex(
 		"##(INFO|FORMAT)=<"
 		"ID=[^,]+,"
 		"Number=([\\.\\dAGRU]|-?\\d+),"
 		"Type=(Integer|Float|Flag|Character|String),"
 		"Description=\"[^\"]+\""
 		"(,[^,]+=\"[^\"]+\")*>");
-	std::regex filterRegex(
+	static std::regex const filterRegex(
 		"##FILTER=<"
 		"ID=[^,]+,"
 		"Description=\"[^\"]+\""
 		">");
 
 	if (line.starts_with("##INFO=") || line.starts_with("##FORMAT=")) {
-		if (!std::regex_match(line, infoFormatRegex)) {
+		if (!std::regex_match(line.cbegin(), line.cend(), infoFormatRegex)) {
 			std::cerr << "Invalid INFO or FORMAT line: " << line << '\n';
 			return false;
 		}
 		return true;
 	} else if (line.starts_with("##FILTER=")) {
-		if (!std::regex_match(line, filterRegex)) {
+		if (!std::regex_match(line.cbegin(), line.cend(), filterRegex)) {
 			std::cerr << "Invalid FILTER line: " << line << '\n';
 			return false;
 		}
@@ -207,61 +209,68 @@ bool checkHeader(std::string const &line)
 	}
 }
 
-std::vector<std::string> split(std::string const &str, char delimiter)
+std::vector<std::string_view> split(std::string_view str, char delimiter)
 {
-	std::vector<std::string> tokens;
-	std::string token;
-	std::istringstream tokenStream(str);
-	while (std::getline(tokenStream, token, delimiter)) {
-		tokens.push_back(token);
+	std::vector<std::string_view> result;
+	size_t start = 0;
+	size_t end = 0;
+
+	while ((end = str.find(delimiter, start)) != std::string_view::npos) {
+		// Add a string_view of the token to the result
+		result.emplace_back(str.substr(start, end - start));
+		start = end + 1; // Move past the delimiter
 	}
-	return tokens;
+	// Add the last token after the final delimiter
+	result.emplace_back(str.substr(start));
+
+	return result;
 }
 
-bool isValidBase(std::string const &base)
+bool isValidBase(std::string_view base)
 {
-	return std::regex_match(base, std::regex("^[ACGTNacgtn]+$"));
+	static std::regex const baseRegex("^[ACGTNacgtn]+$");
+	return std::regex_match(base.cbegin(), base.cend(), baseRegex);
 }
 
-bool isValidGenotype(std::string const &gt)
+bool isValidGenotype(std::string_view gt)
 {
-	std::regex gtRegex("^(\\d+|\\.)([/|](\\d+|\\.))?$");
-	return std::regex_match(gt, gtRegex);
+	static std::regex const gtRegex("^(\\d+|\\.)([/|](\\d+|\\.))?$");
+	return std::regex_match(gt.cbegin(), gt.cend(), gtRegex);
 }
 
-bool isNonNegativeInteger(std::string const &value)
+bool isNonNegativeInteger(std::string_view value)
 {
-	std::regex intRegex("^\\d+$");
-	return std::regex_match(value, intRegex);
+	static std::regex const intRegex("^\\d+$");
+	return std::regex_match(value.cbegin(), value.cend(), intRegex);
 }
 
-bool isListOfNonNegativeIntegers(std::string const &value)
+bool isListOfNonNegativeIntegers(std::string_view value)
 {
-	std::regex listRegex("^\\d+(,\\d+)*$");
-	return std::regex_match(value, listRegex);
+	static std::regex const listRegex("^\\d+(,\\d+)*$");
+	return std::regex_match(value.cbegin(), value.cend(), listRegex);
 }
 
-bool isFloat(std::string const &value)
+bool isFloat(std::string_view value)
 {
-	std::regex floatRegex("^[+-]?([0-9]*[.])?[0-9]+$");
-	return std::regex_match(value, floatRegex);
+	static std::regex const floatRegex("^[+-]?([0-9]*[.])?[0-9]+$");
+	return std::regex_match(value.cbegin(), value.cend(), floatRegex);
 }
 
-bool isBoolean(std::string const &value)
+bool isBoolean(std::string_view value)
 {
 	return value == "0" || value == "1";
 }
 
-bool isHumanChromosome(std::string const &chrom)
+bool isHumanChromosome(std::string_view chrom)
 {
 	// clang-format off
-    static const std::set<std::string> humanChromosomesWithoutPrefix = {
+    static const std::set<std::string_view> humanChromosomesWithoutPrefix = {
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", 
         "11", "12", "13", "14", "15", "16", "17", "18", "19", 
         "20", "21", "22", "X", "Y", "MT"
     };
 
-    static const std::set<std::string> humanChromosomesWithPrefix = {
+    static const std::set<std::string_view> humanChromosomesWithPrefix = {
         "chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", 
         "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", 
         "chr20", "chr21", "chr22", "chrX", "chrY", "chrM"
@@ -272,25 +281,25 @@ bool isHumanChromosome(std::string const &chrom)
 		|| humanChromosomesWithPrefix.find(chrom) != humanChromosomesWithPrefix.end();
 }
 
-bool checkFormatAndSamples(std::vector<std::string> const &fields, size_t formatIndex)
+bool checkFormatAndSamples(std::vector<std::string_view> const &fields, size_t formatIndex)
 {
 	if (formatIndex >= fields.size()) {
 		std::cerr << "FORMAT field missing or invalid\n";
 		return false;
 	}
 
-	std::vector<std::string> formatDescriptors = split(fields[formatIndex], ':');
+	auto formatDescriptors = split(fields[formatIndex], ':');
 
 	for (size_t i = formatIndex + 1; i < fields.size(); ++i) {
-		std::vector<std::string> sampleData = split(fields[i], ':');
+		auto sampleData = split(fields[i], ':');
 		if (sampleData.size() != formatDescriptors.size()) {
 			std::cerr << "Sample data does not match FORMAT descriptors\n";
 			return false;
 		}
 
 		for (size_t j = 0; j < formatDescriptors.size(); ++j) {
-			std::string const &descriptor = formatDescriptors[j];
-			std::string const &data = sampleData[j];
+			auto descriptor = formatDescriptors[j];
+			auto data = sampleData[j];
 
 			if (descriptor == "GT" && !isValidGenotype(data)) {
 				std::cerr << "Invalid genotype data: " << data << '\n';
@@ -399,10 +408,29 @@ bool checkFormatAndSamples(std::vector<std::string> const &fields, size_t format
 	return true;
 }
 
-bool checkDataLines(std::string const &line)
+int stringViewToInt(std::string_view sv)
 {
-	std::vector<std::string> fields = split(line, '\t');
-	std::cout << line << std::endl;
+	int value = 0;
+	auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
+	if (ec == std::errc::invalid_argument || ec == std::errc::result_out_of_range) {
+		throw std::runtime_error("Conversion error");
+	}
+	return value;
+}
+
+float stringViewToFloat(std::string_view sv)
+{
+	float value = 0;
+	auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
+	if (ec == std::errc::invalid_argument || ec == std::errc::result_out_of_range) {
+		throw std::runtime_error("Conversion error");
+	}
+	return value;
+}
+
+bool checkDataLines(std::string_view line)
+{
+	auto fields = split(line, '\t');
 
 	// Basic check for the number of fields
 	size_t const expectedFieldCount = 8;
@@ -425,7 +453,7 @@ bool checkDataLines(std::string const &line)
 
 	// Validate POS - should be a positive integer
 	try {
-		int pos = std::stoi(fields[1]);
+		int pos = stringViewToInt(fields[1]);
 		if (pos <= 0) {
 			std::cerr << "Invalid POS field: " << fields[1] << '\n';
 			return false;
@@ -456,7 +484,7 @@ bool checkDataLines(std::string const &line)
 	// Validate QUAL - should be a float or '.'
 	if (fields[5] != ".") {
 		try {
-			float qual = std::stof(fields[5]);
+			float qual = stringViewToFloat(fields[5]);
 			if (qual < 0) {
 				std::cerr << "Invalid QUAL field: " << fields[5] << '\n';
 				return false;
