@@ -228,14 +228,47 @@ std::vector<std::string_view> split(std::string_view str, char delimiter)
 
 bool isValidBase(std::string_view base)
 {
-	static std::regex const baseRegex("^[ACGTNacgtn]+$");
-	return std::regex_match(base.cbegin(), base.cend(), baseRegex);
+	for (char c : base) {
+		switch (c) {
+			// clang-format off
+    case 'A': case 'a':
+    case 'C': case 'c':
+    case 'G': case 'g':
+    case 'T': case 't':
+    case 'N': case 'n':
+			// clang-format on
+			continue;
+		default:
+			return false;
+		}
+	}
+	return true;
 }
 
 bool isValidGenotype(std::string_view gt)
 {
-	static std::regex const gtRegex("^(\\d+|\\.)([/|](\\d+|\\.))?$");
-	return std::regex_match(gt.cbegin(), gt.cend(), gtRegex);
+	if (gt == ".") {
+		return true; // Handle missing data
+	}
+
+	bool validFormat = true;
+	bool seenDigit = false;
+
+	for (size_t i = 0; i < gt.size(); ++i) {
+		char c = gt[i];
+		if (isdigit(c)) {
+			seenDigit = true;
+			continue;
+		} else if ((c == '/' || c == '|') && i > 0 && i < gt.size() - 1 && seenDigit) {
+			// Ensure separators are surrounded by digits
+			seenDigit = false; // Reset for next digit check
+			continue;
+		} else {
+			validFormat = false;
+			break;
+		}
+	}
+	return validFormat && seenDigit; // Ensure ends with a digit
 }
 
 bool isNonNegativeInteger(std::string_view str)
