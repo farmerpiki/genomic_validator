@@ -246,10 +246,15 @@ bool isNonNegativeInteger(std::string_view str)
 	return result.ec == std::errc() && value >= 0;
 }
 
-bool isListOfNonNegativeIntegers(std::string_view value)
+bool isListOfNonNegativeIntegers(std::string_view str)
 {
-	static std::regex const listRegex("^\\d+(,\\d+)*$");
-	return std::regex_match(value.cbegin(), value.cend(), listRegex);
+	auto tokens = split(str, ',');
+	for (auto &token : tokens) {
+		if (!isNonNegativeInteger(token)) {
+			return false;
+		}
+	}
+	return true;
 }
 
 bool isFloat(std::string_view str)
