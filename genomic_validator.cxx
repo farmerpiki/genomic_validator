@@ -238,10 +238,12 @@ bool isValidGenotype(std::string_view gt)
 	return std::regex_match(gt.cbegin(), gt.cend(), gtRegex);
 }
 
-bool isNonNegativeInteger(std::string_view value)
+bool isNonNegativeInteger(std::string_view str)
 {
-	static std::regex const intRegex("^\\d+$");
-	return std::regex_match(value.cbegin(), value.cend(), intRegex);
+	int value = 0;
+	auto result = std::from_chars(str.data(), str.data() + str.size(), value);
+	// Successful parse and non-negative check
+	return result.ec == std::errc() && value >= 0;
 }
 
 bool isListOfNonNegativeIntegers(std::string_view value)
@@ -250,10 +252,12 @@ bool isListOfNonNegativeIntegers(std::string_view value)
 	return std::regex_match(value.cbegin(), value.cend(), listRegex);
 }
 
-bool isFloat(std::string_view value)
+bool isFloat(std::string_view str)
 {
-	static std::regex const floatRegex("^[+-]?([0-9]*[.])?[0-9]+$");
-	return std::regex_match(value.cbegin(), value.cend(), floatRegex);
+	float value = 0.0f;
+	auto result = std::from_chars(str.data(), str.data() + str.size(), value);
+	// Check for successful parse without worrying about the range
+	return result.ec == std::errc();
 }
 
 bool isBoolean(std::string_view value)
